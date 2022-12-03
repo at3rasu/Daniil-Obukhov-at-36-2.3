@@ -4,6 +4,7 @@ from operator import itemgetter
 from typing import List, Dict
 import re
 import doctest
+import unittest
 import numpy as np
 import pandas as pd
 import openpyxl
@@ -21,25 +22,48 @@ class Salary:
     Класс для представления зарплат
     Attributes:
         salary_from (str): Нижняя граница оклада
-        :type (str)
+        :type (str or int or float)
         salary_to: Верхняя граница оклада
-        :type (str)
+        :type (str or int or float)
         salary_currency: Валюта оклада
         :type (str)
     """
-    def __init__(self, salary_from : str, salary_to : str, salary_currency : str):
+    def __init__(self, salary_from : str or int or float, salary_to : str or int or float, salary_currency : str):
         """
         @param salary_from: Нижняя граница оклада
-        :type (str)
+        :type (str or int or float)
         @param salary_to: Верхняя граница оклада
-        :type (str)
+        :type (str or int or float)
         @param salary_currency: Валюта оклада
         :type (str)
         """
-        self.salary_from = salary_from
-        self.salary_to = salary_to
+        self.salary_from = float(salary_from)
+        self.salary_to = float(salary_to)
         self.salary_currency = salary_currency
         self.average_salary = (int(float(salary_from) + float(salary_to)) / 2)
+
+    def convert_to_rubles(self):
+        """
+        Конверирует из другой валюты в рубли
+        :return: Возвращает значение после конвертированя валюты
+        >>> Salary(100, 200, "RUR").convert_to_rubles()
+        150.0
+        >>> Salary(100, 200, "AZN").convert_to_rubles()
+        5352.0
+        """
+        currency_to_rub = {
+            "AZN": 35.68,
+            "BYR": 23.91,
+            "EUR": 59.90,
+            "GEL": 21.74,
+            "KGS": 0.76,
+            "KZT": 0.13,
+            "RUR": 1,
+            "UAH": 1.64,
+            "USD": 60.66,
+            "UZS": 0.0055
+        }
+        return self.average_salary * currency_to_rub[self.salary_currency]
 
 
 class Vacancy:
@@ -61,6 +85,12 @@ class Vacancy:
         """
         @param vacancy: Отдельная вакансия в виде словаря: атрибут - значение
         :type (Dict[str, str])
+        >>> vac = {"name" :"Инженер", "salary_from" : 35000.0,"salary_to" : 45000.0, "salary_currency" : "RUR", "area_name" : "Moscow","published_at" :"2007-12-03T17:47:55+0300"}
+        >>> vac = Vacancy(vac)
+        >>> vac.area_name
+        'Moscow'
+        >>> vac.year
+        '2007'
         """
         self.name = vacancy["name"]
         self.salary = Salary(salary_from=vacancy["salary_from"],
@@ -90,7 +120,7 @@ class DataSet:
 
     def __csv_reader(self) -> (List[Vacancy]):
         """
-        Читает из csv файла вакансии, отбирает правильно заполненные и возвращает в виде списка вакансий
+        Читает из csv файла вакансии и возвращает в виде списка вакансий
         @return: Список вакансий
         :type (List[Vacancy])
         """
@@ -98,6 +128,18 @@ class DataSet:
             file_reader = csv.reader(file)
             lines = [row for row in file_reader]
             headlines, vacancies = lines[0], lines[1:]
+        return self.process_vacancies(headlines, vacancies)
+
+    def process_vacancies(self, headlines : List[str], vacancies : List[List[str]]) -> (List[Vacancy]):
+        """
+        Отбирает правильно заполненные вакансии и конвертирует в класс Vacancy
+        :param headlines: Названия заголовков
+        :type (List[str])
+        :param vacancies: Список из списокв вакансий
+        :type (List[List[str]])
+        :return: Правильно заполненные вакансии
+        :type (List[Vacancy])
+        """
         result = []
         for vacancy in vacancies:
             if (len(vacancy) == len(headlines)) and (all([v != "" for v in vacancy])):
@@ -128,31 +170,24 @@ class ParamSalary:
         @param salary: Зарплата для определенной вакансии
         :type (Salary)
         """
-        self.currency_to_rub = {
-            "AZN": 35.68,
-            "BYR": 23.91,
-            "EUR": 59.90,
-            "GEL": 21.74,
-            "KGS": 0.76,
-            "KZT": 0.13,
-            "RUR": 1,
-            "UAH": 1.64,
-            "USD": 60.66,
-            "UZS": 0.0055
-        }
         self.param = param
-        self.salary = int(salary.average_salary * self.currency_to_rub[salary.salary_currency])
+        self.salary = salary.convert_to_rubles()
         self.count_vacancies = 1
 
-    def add_salary(self, new_salary : Salary) -> None:
+    def add_salary(self, new_salary : Salary):
         """
         Добавление зарплаты к выбранному параметру
         @param new_salary: Зарплата для добавления
         :type (Salary)
         @return: None
+        >>> ParamSalary("city", Salary(100, 200, "RUR")).add_salary(Salary(200, 300, "RUR")).salary
+        400.0
+        >>> ParamSalary("city", Salary(100, 200, "RUR")).add_salary(Salary(200, 300, "RUR")).count_vacancies
+        2
         """
         self.count_vacancies += 1
-        self.salary = self.salary + new_salary.average_salary * self.currency_to_rub[new_salary.salary_currency]
+        self.salary = self.salary + new_salary.convert_to_rubles()
+        return self
 
 
 class Report:
@@ -231,7 +266,7 @@ class Report:
         df2 = [[cities_of_salary[i], salaries[i], "", cities_of_vacancy[i], vacancies[i]] for i in range(len(cities_of_salary))]
         df2.insert(0, ["Город", "Уровень зарплат", "", "Город", "Доля вакансий"])
         df2 = pd.DataFrame(df2, columns=None)
-        with pd.ExcelWriter(self.file_name, engine='xlsxwriter') as writer:
+        with pd.ExcelWriter(self.file_name) as writer:
             df.to_excel(writer, sheet_name='Статистика по годам', index=False, header=False)
             df2.to_excel(writer, sheet_name="Статистика по городам", index=False, header=False)
         wb = openpyxl.load_workbook(self.file_name)
@@ -496,13 +531,15 @@ class InputConnect:
         """
         Обработка данных
         @return: None
+        >>> DataSet("32.txt").process_vacancies(["name","salary_from",'salary_to','salary_currency','area_name',"published_at"], [["Системный аналитик","75000.0",'95000.0','RUR','Москва','2007-12-03T17:41:49+0300']])[0].name
+        'Системный аналитик'
         """
         request = self.input_data[0]
         data = DataSet(self.input_data[1]).vacancies_objects
         data_profession = [d for d in data if self.input_data[2] in d.name]
-        year_salary = self.__convert_to_param_salary(data, "year")
-        cities_salary = self.__convert_to_param_salary(data, "city")
-        professions_year_salary = self.__add_missing_years(self.__convert_to_param_salary(data_profession, "year"), year_salary)
+        year_salary = self.convert_to_param_salary(data, "year")
+        cities_salary = self.convert_to_param_salary(data, "city")
+        professions_year_salary = self.__add_missing_years(self.convert_to_param_salary(data_profession, "year"), year_salary)
         city_salary = dict(sorted({x: y for x, y in zip([r.param for r in cities_salary], [int(v.salary / v.count_vacancies) for v in cities_salary])}.items(), key=itemgetter(1), reverse=True))
         city_vacancies = dict(sorted({x: y for x, y in zip([r.param for r in cities_salary], [v.count_vacancies / len(data) for v in cities_salary])}.items(), key=itemgetter(1), reverse=True))
         year_salary, year_vacancy = self.__convert_from_param_salary_to_dict(year_salary)
@@ -544,7 +581,7 @@ class InputConnect:
                            request=request)
         pdf.generate_pdf()
 
-    def __convert_to_param_salary(self, vacancies: List[Vacancy], comparison_param: str) -> (List[ParamSalary]):
+    def convert_to_param_salary(self, vacancies: List[Vacancy], comparison_param: str) -> (List[ParamSalary]):
         """
         Конвертирует список вакансий по параметру сравнения в список класса ParamSalary
         @param vacancies: Набор вакансий
@@ -553,6 +590,10 @@ class InputConnect:
         :type (str)
         @return: Список данных класса ParamSalary
         :type (List[ParamSalary])
+        >>> vac = {"name" :"Инженер", "salary_from" : 35000.0,"salary_to" : 45000.0, "salary_currency" : "RUR", "area_name" : "Moscow","published_at" :"2007-12-03T17:47:55+0300"}
+        >>> vac = Vacancy(vac)
+        >>> InputConnect().convert_to_param_salary([vac], "year")[0].param
+        '2007'
         """
         param_salary = {}
         for vacancy in vacancies:
@@ -561,7 +602,7 @@ class InputConnect:
             if not param_salary.__contains__(param):
                 param_salary[param] = ParamSalary(param, vacancy.salary)
             else:
-                param_salary[param].add_salary(vacancy.salary)
+                param_salary[param] = param_salary[param].add_salary(vacancy.salary)
         return [param_salary[d] for d in param_salary]
 
     def __convert_from_param_salary_to_dict(self, param_salary: List[ParamSalary]) -> (Dict[int, int], Dict[int, int]):
@@ -595,3 +636,37 @@ class InputConnect:
 
 
 InputConnect()
+
+
+class TestMethods(unittest.TestCase):
+    def test_convert_to_param_salary(self):
+        vac = {"name": "Инженер", "salary_from": 35000.0, "salary_to": 45000.0, "salary_currency": "RUR",
+               "area_name": "Moscow", "published_at": "2007-12-03T17:47:55+0300"}
+        vac = Vacancy(vac)
+        self.assertEqual(InputConnect().convert_to_param_salary([vac], "year")[0].param, '2007')
+
+    def test_add_salary(self):
+        self.assertEqual(ParamSalary("city", Salary(100, 200, "RUR")).add_salary(Salary(200, 300, "RUR")).salary, 400.0)
+        self.assertEqual(
+            ParamSalary("city", Salary(100, 200, "RUR")).add_salary(Salary(200, 300, "RUR")).count_vacancies, 2)
+
+    def test_convert_to_rubles(self):
+        self.assertEqual(Salary(100, 200, "RUR").convert_to_rubles(), 150.0)
+        self.assertEqual(Salary(100, 200, "AZN").convert_to_rubles(), 5352.0)
+
+    def test_init_vacancy(self):
+        vac = {"name": "Инженер", "salary_from": 35000.0, "salary_to": 45000.0, "salary_currency": "RUR",
+               "area_name": "Moscow", "published_at": "2012-12-03T17:47:55+0300"}
+        vacancy = Vacancy(vac)
+        self.assertEqual(vacancy.area_name, "Moscow")
+        self.assertEqual(vacancy.year, '2012')
+
+    def test_process_vacancies(self):
+        self.assertEqual(DataSet("32.txt").process_vacancies(
+            headlines=["name", "salary_from", 'salary_to', 'salary_currency', 'area_name', "published_at"],
+            vacancies=[["Системный аналитик", "75000.0", '95000.0', 'RUR', 'Москва', '2007-12-03T17:41:49+0300']])[0].name,
+                         'Системный аналитик')
+
+
+if __name__ == "__main__":
+    unittest.main()

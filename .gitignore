@@ -3,3 +3,4 @@ venv
 .idea
 *.html
 *.css
+*.txt
