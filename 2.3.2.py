@@ -169,6 +169,8 @@ class ParamSalary:
         :type (str)
         @param salary: Зарплата для определенной вакансии
         :type (Salary)
+        >>> ParamSalary("year", Salary(1000, 2000, "USD")).salary
+        90990.0
         """
         self.param = param
         self.salary = salary.convert_to_rubles()
@@ -525,14 +527,16 @@ class InputConnect:
         for question in ["Введите запрос: ", "Введите название файла: ", "Введите название профессии: "]:
             print(question, end="")
             self.input_data.append(input())
-        self.__process_data()
 
-    def __process_data(self) -> None:
+    def process_data(self) -> None:
         """
         Обработка данных
         @return: None
-        >>> DataSet("32.txt").process_vacancies(["name","salary_from",'salary_to','salary_currency','area_name',"published_at"], [["Системный аналитик","75000.0",'95000.0','RUR','Москва','2007-12-03T17:41:49+0300']])[0].name
+        >>> dataSet = DataSet("32.txt").process_vacancies(["name","salary_from",'salary_to','salary_currency','area_name',"published_at"],[["Системный аналитик","75000.0",'95000.0','RUR','Москва','2007-12-03T17:41:49+0300']])[0]
+        >>> dataSet.name
         'Системный аналитик'
+        >>> dataSet.year
+        '2007'
         """
         request = self.input_data[0]
         data = DataSet(self.input_data[1]).vacancies_objects
@@ -590,10 +594,6 @@ class InputConnect:
         :type (str)
         @return: Список данных класса ParamSalary
         :type (List[ParamSalary])
-        >>> vac = {"name" :"Инженер", "salary_from" : 35000.0,"salary_to" : 45000.0, "salary_currency" : "RUR", "area_name" : "Moscow","published_at" :"2007-12-03T17:47:55+0300"}
-        >>> vac = Vacancy(vac)
-        >>> InputConnect().convert_to_param_salary([vac], "year")[0].param
-        '2007'
         """
         param_salary = {}
         for vacancy in vacancies:
@@ -635,7 +635,7 @@ class InputConnect:
         return param_salary
 
 
-InputConnect()
+InputConnect().process_data()
 
 
 class TestMethods(unittest.TestCase):
@@ -662,10 +662,14 @@ class TestMethods(unittest.TestCase):
         self.assertEqual(vacancy.year, '2012')
 
     def test_process_vacancies(self):
-        self.assertEqual(DataSet("32.txt").process_vacancies(
-            headlines=["name", "salary_from", 'salary_to', 'salary_currency', 'area_name', "published_at"],
-            vacancies=[["Системный аналитик", "75000.0", '95000.0', 'RUR', 'Москва', '2007-12-03T17:41:49+0300']])[0].name,
-                         'Системный аналитик')
+        dataSet = DataSet("32.txt").process_vacancies(
+            ["name", "salary_from", 'salary_to', 'salary_currency', 'area_name', "published_at"],
+            [["Системный аналитик", "75000.0", '95000.0', 'RUR', 'Москва', '2007-12-03T17:41:49+0300']])
+        self.assertEqual(dataSet[0].name, 'Системный аналитик')
+        self.assertEqual(dataSet[0].year, '2007')
+
+    def test_init_param_salary(self):
+        self.assertEqual(ParamSalary("year", Salary(1000, 2000, "USD")).salary, 90990.0)
 
 
 if __name__ == "__main__":
